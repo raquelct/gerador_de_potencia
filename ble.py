@@ -18,18 +18,11 @@ _IRQ_GATTC_WRITE_STATUS              = const(1 << 12)
 _IRQ_GATTC_NOTIFY                    = const(1 << 13)
 _IRQ_GATTC_INDICATE                  = const(1 << 14)
 
-mensage_received = False
-mensage = ""
-
 ble = bluetooth.BLE()
 ble.active(True)
 
-UART_SERVICE = bluetooth.UUID('6E400001-B5A3-F393-E0A9-E50E24DCCA9E')
-UART_TX = (bluetooth.UUID('6E400003-B5A3-F393-E0A9-E50E24DCCA9E'), bluetooth.FLAG_READ|bluetooth.FLAG_NOTIFY,)
-UART_RX = (bluetooth.UUID('6E400002-B5A3-F393-E0A9-E50E24DCCA9E'), bluetooth.FLAG_WRITE,)
-
-((tx, rx),) = ble.gatts_register_services(((UART_SERVICE, (UART_TX, UART_RX,),),))
-ble.gap_advertise(100, b'\x02\x01\x02\x0C\x09MedidorPython')
+mensage_received = False
+mensage = ""
 
 def bt_irq(event, data):
     global mensage_received
@@ -38,14 +31,20 @@ def bt_irq(event, data):
     if event == _IRQ_CENTRAL_CONNECT:
         # A central has connected to this peripheral.
         conn_handle, addr_type, addr = data
-        time.sleep(1)
+        time.sleep(2)
         ble.gatts_notify(conn_handle, tx, 'Digite a potencia desejada em Watts:')	
     elif event == _IRQ_CENTRAL_DISCONNECT:
         # A central has disconnected from this peripheral.
         conn_handle, addr_type, addr = data
+        ble.active(False)
+        time.sleep(.1)
+        ble.active(True)
+        ble.gatts_register_services(SERVICES)
+        ble.gap_advertise(100, bytearray('\x02\x01\x02') + adv_encode_name('ESP32'))
     elif event == _IRQ_GATTS_WRITE:
         # A central has written to this characteristic or descriptor.
         conn_handle, attr_handle = data
+        time.sleep(.1)
         mensage_received = True
         mensage = ble.gatts_read(rx).decode()
         print(mensage)
@@ -55,3 +54,17 @@ def bt_irq(event, data):
         conn_handle, attr_handle = data
 
 ble.irq(bt_irq)
+
+# GATT Server
+UART_UUID = bluetooth.UUID('6E400001-B5A3-F393-E0A9-E50E24DCCA9E')
+UART_TX = (bluetooth.UUID('6E400003-B5A3-F393-E0A9-E50E24DCCA9E'), bluetooth.FLAG_READ | bluetooth.FLAG_NOTIFY,)
+UART_RX = (bluetooth.UUID('6E400002-B5A3-F393-E0A9-E50E24DCCA9E'), bluetooth.FLAG_WRITE,)
+UART_SERVICE = (UART_UUID, (UART_TX, UART_RX,),)
+SERVICES = (UART_SERVICE,)
+((tx, rx,), ) = ble.gatts_register_services(SERVICES)
+
+def adv_encode_name(name):
+    name = bytes(name, 'ascii')
+    return bytearray((len(name) + 1, 0x09)) + name
+
+ble.gap_advertise(100, bytearray('\x02\x01\x02') + adv_encode_name('MedidorESP32'))

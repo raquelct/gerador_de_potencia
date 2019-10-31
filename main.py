@@ -1,27 +1,56 @@
-import network
+#import network
+#import uftpd
+import time
+from machine import Pin
 import ble
-import led
-import uftpd
 
-def do_connect():
-    ap = network.WLAN(network.AP_IF) # create access-point interface
-    ap.config(essid='ESP-AP-MEDIDOR') # set the ESSID of the access point
-    ap.active(True)         # activate the interface
-    print('network config:', ap.ifconfig())
+# def do_connect():
+#     ap = network.WLAN(network.AP_IF) # create access-point interface
+#     ap.config(essid='ESP-AP-MEDIDOR') # set the ESSID of the access point
+#     ap.active(True)         # activate the interface
+#     print('network config:', ap.ifconfig())
 
-def calculate_time(pot):
-    time_ms = (1.25*3600000)/pot
-    return time_ms
+def read_file(file_name):
+    file = open(file_name, "r")
+    str = file.read()
+    file.close()
+    return str
 
-calc_time = calculate_time(1000)
-do_connect()
+def write_file(file_name, data):
+    file = open(file_name, "w")
+    file.write(data)
+    file.close()
 
-while(1):
+led = Pin(5, Pin.OUT, value=0)
+pot = int(read_file("pot.txt"))
+previous_ms = 0
+interval = 10
+watts_second = 0
+counter = 0
+#do_connect()
+
+while True: 
     if ble.mensage_received:
         ble.mensage_received = False
         try:
-            calc_time = calculate_time(int(ble.mensage))
+            pot = (int(ble.mensage))
+            write_file("pot.txt", ble.mensage)
         except ValueError as e:
             print("Error converting value")
-        
-    led.blink(80, calc_time)  
+
+    current_ms = time.ticks_ms() 
+    if (watts_second >= 4500):
+        watts_second = watts_second - 4500
+        counter = 0
+        led.value(1)
+        print("led on")
+    if (time.ticks_diff(current_ms, previous_ms) >= interval):
+        previous_ms = current_ms 
+        watts_second = watts_second + (pot * (interval/1000))
+        counter = counter + 1
+    if (counter == (80/interval) and led.value() == 1):
+        led.value(0)
+        print("led off")
+
+
+    
